@@ -12,7 +12,7 @@ export IBV_FORK_SAFE=1
 export HDF5_USE_FILE_LOCKING=FALSE
 export LD_LIBRARY_PATH=/home/twang3/g2full_polaris/GSASII/bindist:$LD_LIBRARY_PATH
 
-num_node=4
+num_node=8
 
 exp_root_dir="/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/result/"
 exp_idx=1
@@ -25,7 +25,7 @@ phase_idx=0
 echo "Start doing simulation!"
 
 CMD_ML="python /grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/mtnetwork-training-ddp.py \
-	--batch_size=1024 \
+	--batch_size=256 \
 	--device=gpu \
 	--epoch=40 \
 	--phase=0 \

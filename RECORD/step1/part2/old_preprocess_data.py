@@ -2,66 +2,56 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
 import numpy as np
 import h5py
 import time
-from collections import deque
 
 
 #'root_path' is the data directory
 #'path_in_list' is the directory name for each class
 #'filename_in_list' is filename format for each class
 #'rank_max_list' is the maximun rank for each class
+#'rank_in_max' is the inner block size of merging
 #'do_saving' decide if we want to save data
 #'filename_prefix' describe the filename, which should be filename_prefix-all-Y.npy and filename_prefix-all-P.npy
-def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list, do_saving=False, filename_prefix="Output"):
+def old_read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list, rank_in_max, do_saving=False, filename_prefix="Output"):
 
     start = time.time()
-    t_stage = -time.time()
     y_all = []
     X_all = []
 
+#---------------------------merge all ranks together-----------------------------
+
     for si in range(4):
-        X = deque()
-        y = deque()
-        sz = 0
+    
         rank_max = rank_max_list[si]
+        assert (int(rank_max) % int(rank_in_max) == 0), "rank_max must be integer multiple of rank_in_max"
+        
         path_in = path_in_list[si]
         filename_in = filename_in_list[si]
     
-        for ri in range(rank_max):
-            with h5py.File(root_path + path_in + filename_in + str(ri) + '.hdf5', 'r') as f:
-                dhisto = f['histograms']
-                X_sub = dhisto[:, 1, :]
-                X_shape = X_sub.shape
-                dparams = f['parameters']
-                y_sub = dparams[:]
-                y_shape = y_sub.shape
+        for ri_out in range(0, int(rank_max / rank_in_max)):
+            for ri_in in range(ri_out * rank_in_max, (ri_out + 1) * rank_in_max):
+                
+                with h5py.File(root_path + path_in + filename_in + str(ri_in) + '.hdf5', 'r') as f:
+                    dhisto = f['histograms']
+                    X_sub = dhisto[:, 1, :]
+                    dparams = f['parameters']            
+                    y_sub = dparams[:]
+        
+                    if ri_in == ri_out * rank_in_max:
+                        X = X_sub
+                        y = y_sub
+                    else:
+                        X = np.concatenate((X, X_sub[:]), axis=0)
+                        y = np.concatenate((y, y_sub[:]), axis=0)
+        
+            if ri_out == 0:
+                X_all.append(X)
+                y_all.append(y)
+            else:
+                X_all[si] = np.concatenate((X_all[si], X[:]), axis=0)
+                y_all[si] = np.concatenate((y_all[si], y[:]), axis=0)
     
-                X.append(X_sub)
-                y.append(y_sub)
-                sz += y_shape[0]
-
-        X_shape = list(X_shape)
-        y_shape = list(y_shape)
-        X_shape[0] = sz
-        y_shape[0] = sz
-        X_res = np.empty(tuple(X_shape))
-        y_res = np.empty(tuple(y_shape))
-    
-        sz_tot = 0
-        for ri in range(rank_max):
-            X_temp = X.popleft()
-            y_temp = y.popleft()
-            sz_temp = y_temp.shape[0]
-    
-            X_res[sz_tot:sz_tot+sz_temp] = X_temp
-            y_res[sz_tot:sz_tot+sz_temp] = y_temp
-            sz_tot += sz_temp
-
-        X_all.append(X_res)
-        y_all.append(y_res)
-    
-    t_stage += time.time()
-    print("Read and merge hdf5 data takes {}".format(t_stage))
-    t_stage = -time.time()
+        print('si = ', si, ' Shape of X_all read: ', X_all[si].shape)
+        print('si = ', si, ' Shape of y_all read: ', y_all[si].shape)
 
 
 #---------------------------merge two trigonal ranges together-----------------------------
@@ -70,11 +60,6 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     X_all.pop(2)
     y_all[1] = np.concatenate((y_all[1], y_all[2]), axis=0)
     y_all.pop(2)
-    
-    t_stage += time.time()
-    print("Merge two trigonal ranges takes {}".format(t_stage))
-    t_stage = -time.time()
-
     
 #----------------------normalize X-data, concatenate and save to file------------------------
     
@@ -91,15 +76,9 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     X_final = np.concatenate([X_all[0], X_all[1], X_all[2]], axis=0)
     print(X_final.shape)
 
-    t_stage += time.time()
-    print("Normalize and concatnate X-data takes {}".format(t_stage))
-
     if do_saving:
         with open(filename_prefix + '-all-Y.npy', 'wb') as f:
             np.save(f, X_final)
-            
-
-    t_stage = -time.time()
     
 #------------------------create Y-data with size n*6 and save to file-----------------------
 # 0 for cubic,      [a, a, 1.5708, 0, 0, 1] 
@@ -149,9 +128,6 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     
     y_final = np.concatenate([y_cubic, y_trigonal, y_tetragonal], axis=0)
     print(y_final.shape)
-
-    t_stage += time.time()
-    print("Create, normalize and concatnate y-data takes {}".format(t_stage))
 
     if do_saving:
         with open(filename_prefix + '-all-P.npy', 'wb') as f:

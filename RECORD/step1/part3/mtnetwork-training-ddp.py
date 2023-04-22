@@ -20,11 +20,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import argparse
 import preprocess_data as predata
 
-# For memory debug!
-#import psutil
-#process = psutil.Process(os.getpid())
-
-print("Start setting parser!", flush=True)
+print("Start setting parser!")
 
 #----------------------Parser settings---------------------------
 
@@ -52,26 +48,14 @@ parser.add_argument('--num_workers',    type=int,   default=1,
                     help='set the number of op workers. only work for gpu')
 parser.add_argument('--data_root_dir',              default='./',
                     help='the root dir of gsas output data')
-parser.add_argument('--ckpt_dir',                  default='./',
-                    help='the directory where save and load ckpt of model and optimizer')
+parser.add_argument('--model_dir',                  default='./',
+                    help='the directory where save and load model')
 parser.add_argument('--rank_data_gen',  type=int,   default=1,
                     help='number of ranks used to generate input data')
 
 args = parser.parse_args()
 args.cuda = ( args.device.find("gpu")!=-1 and torch.cuda.is_available() )
 
-
-data_path = args.data_root_dir + '/phase{}'.format(args.phase) + '/'
-print("data_path is ", data_path)
-path_in_list = ['test_cubic/', 
-                'test_trigonal_part1/', 
-                'test_trigonal_part2/', 
-                'test_tetragonal/']
-filename_in_list = ['cubic_1001460_cubic_part', 
-                    'trigonal_1522004_trigonal_part', 
-                    'trigonal_1522004_trigonal_part',
-                    'tetragonal_1531431_tetragonal_part']
-rank_max_list = [args.rank_data_gen, args.rank_data_gen, args.rank_data_gen, args.rank_data_gen]
 
 #--------------------DDP initialization-------------------------
 
@@ -92,7 +76,7 @@ if rank == 0:
     print(args)
     print(backend)
 
-torch.distributed.init_process_group(backend=backend, init_method='file:///grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step3_np_3_large/sharedfile', world_size=size, rank=rank)
+torch.distributed.init_process_group(backend=backend, init_method='file:///grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/sharedfile', world_size=size, rank=rank)
 print("rank = {}, is_initialized = {}, nccl_avail = {}, get_rank = {}, get_size = {}".format(rank, torch.distributed.is_initialized(), torch.distributed.is_nccl_available(), torch.distributed.get_rank(), torch.distributed.get_world_size()))
 
 if args.cuda:
@@ -161,15 +145,11 @@ class FullModel( torch.nn.Module ):
 
 #X_scaled = np.load('/home/twang3/myWork/multitask_all_Y_balanced.npy')
 #y_scaled = np.load('/home/twang3/myWork/multitask_all_P_balanced.npy')
-#X_scaled = np.load('/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/Output-all-Y.npy')
-#y_scaled = np.load('/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/Output-all-P.npy')
+X_scaled = np.load('/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/Output-all-Y.npy')
+y_scaled = np.load('/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/Output-all-P.npy')
 
-print("Start reading and preprocessing data!")
-X_scaled, y_scaled = predata.read_and_merge_data(data_path, path_in_list, filename_in_list, rank_max_list, do_saving=False, filename_prefix="Output")
-print("Rank = {}".format(rank), X_scaled.shape, y_scaled.shape)
-
-#print("Rank = {}".format(rank), process.memory_info().rss / 1024 / 1024, " MB")
-#sys.exit()
+if rank == 0:
+    print(X_scaled.shape, y_scaled.shape)
 
 X_scaled = np.float32(X_scaled)
 y_scaled = np.float32(y_scaled)
@@ -177,6 +157,8 @@ train_idx, test_idx = train_test_split(range(len(X_scaled)), test_size=0.05, ran
 test_idx.sort()
 X_train, X_test = X_scaled[train_idx], X_scaled[test_idx]
 y_train, y_test = y_scaled[train_idx], y_scaled[test_idx]
+if rank == 0:
+    print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
 
 X_train_torch = torch.from_numpy(X_train)
 y_train_torch = torch.from_numpy(y_train).reshape(-1,y_train.shape[1])
@@ -190,7 +172,8 @@ y_test_torch = FloatTensor(y_test_torch)
 
 X_train_torch = X_train_torch.reshape((X_train_torch.shape[0], 1, X_train_torch.shape[1]))
 X_test_torch = X_test_torch.reshape((X_test_torch.shape[0], 1, X_test_torch.shape[1]))
-print("Rank = {}".format(rank), X_train_torch.shape,y_train_torch.shape,X_test_torch.shape, y_test_torch.shape)
+if rank == 0:
+    print(X_train_torch.shape,y_train_torch.shape,X_test_torch.shape, y_test_torch.shape)
 
 
 #----------------DDP: use DistributedSampler to partition the train/test data--------------------
@@ -211,15 +194,9 @@ print("partition the train/test data finish on rank {}".format(rank))
 
 #----------------------------setup model---------------------------------
 
-if args.phase > 0:
-    ckpt = torch.load(args.ckpt_dir + "/ckpt_phase{}.pt".format(args.phase-1))
-#ckpt = torch.load(args.ckpt_dir + "/ckpt_phase{}.pt".format(args.phase))
-
 model = FullModel(len_input = 2806, num_hidden = 256, num_output = 3, num_classes = 3)
 if args.phase > 0:
-    model.load_state_dict(ckpt['model'])
-#model.load_state_dict(ckpt['model'])
-
+    model.load_state_dict(torch.load(args.model_dir + "/full_model_phase{}.pt".format(args.phase-1)))
 if args.cuda:
     model.cuda()
     model = DDP(model)
@@ -232,10 +209,6 @@ print("setup model finish on rank {}".format(rank))
 #optimizer = torch.optim.Adam(list(simple_xfer_model.parameters()) + list(lenet_trained_model.parameters()), lr=args.lr)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr * size)
 #optimizer = torch.optim.Adam(list(simple_xfer_model.parameters()) + list(lenet_trained_model.parameters()), lr=args.lr * np.sqrt(size))
-
-if args.phase > 0:
-    optimizer.load_state_dict(ckpt['optimizer'])
-#optimizer.load_state_dict(ckpt['optimizer'])
 
 criterion1 = torch.nn.MSELoss()
 criterion2 = torch.nn.BCEWithLogitsLoss()
@@ -272,15 +245,14 @@ def modify_lr(optimizer, warmup_epoch, first_decay_epoch, second_decay_epoch, cu
 def train(epoch):
     model.train()
     train_sampler.set_epoch(epoch)
-    
-    if epoch % args.log_interval == 0:
-        running_loss  = torch.tensor(0.0)
-        running_loss1 = torch.tensor(0.0)
-        running_loss2 = torch.tensor(0.0)
-        if args.device == "gpu":
-            running_loss, running_loss1, running_loss2  = running_loss.cuda(), running_loss1.cuda(), running_loss2.cuda()
 
-    for batch_idx, current_batch in enumerate(train_loader):     
+    running_loss  = torch.tensor(0.0)
+    running_loss1 = torch.tensor(0.0)
+    running_loss2 = torch.tensor(0.0)
+    if args.device == "gpu":
+        running_loss, running_loss1, running_loss2  = running_loss.cuda(), running_loss1.cuda(), running_loss2.cuda()
+
+    for batch_idx, current_batch in enumerate(train_loader):      
         if args.cuda:
             inp, current_batch_y = current_batch[0].cuda(), current_batch[1].cuda()
         else:
@@ -296,21 +268,21 @@ def train(epoch):
         loss  = loss1 + loss2
         loss.backward()
         optimizer.step()
-
-        if epoch % args.log_interval == 0:
-            running_loss  += loss.item()
-            running_loss1 += loss1.item()
-            running_loss2 += loss2.item()
-
-    if epoch % args.log_interval == 0:
-        running_loss  = running_loss  / len(train_loader)
-        running_loss1 = running_loss1 / len(train_loader)
-        running_loss2 = running_loss2 / len(train_loader)
-        loss_avg  = metric_average(running_loss,  'running_loss')
-        loss1_avg = metric_average(running_loss1, 'running_loss1')
-        loss2_avg = metric_average(running_loss2, 'running_loss2')
-        if rank == 0: 
-            print("Training set: Average loss1: {:15.8f}, loss2: {:15.8f}, loss: {:15.8f}".format(loss1_avg, loss2_avg, loss_avg))
+        running_loss  += loss.item()
+        running_loss1 += loss1.item()
+        running_loss2 += loss2.item()
+    
+        if batch_idx % args.log_interval == 0 and rank == 0:
+            print("[Rank = {}] Train Epoch: {} [{}/{} ({:.1f}%)]\tloss1: {:15.6f}, loss2: {:15.6f}, loss_tot: {:15.6f}".format(rank, epoch, batch_idx, len(train_loader),
+                100.0 * batch_idx / len(train_loader), loss1.item(), loss2.item(), loss.item()))
+    running_loss  = running_loss  / len(train_loader)
+    running_loss1 = running_loss1 / len(train_loader)
+    running_loss2 = running_loss2 / len(train_loader)
+    loss_avg  = metric_average(running_loss,  'running_loss')
+    loss1_avg = metric_average(running_loss1, 'running_loss1')
+    loss2_avg = metric_average(running_loss2, 'running_loss2')
+    if rank == 0: 
+        print("Training set: Average loss1: {:15.8f}, loss2: {:15.8f}, loss: {:15.8f}".format(loss1_avg, loss2_avg, loss_avg))
 
 def test():
     model.eval()
@@ -335,21 +307,19 @@ def test():
 time_tot = time.time()
 for epoch in range(1, args.epochs + 1):
     e_start = time.time()
-    modify_lr(optimizer, 30, 120, 300, epoch, args.lr, args.lr * size, 0.5)
+    modify_lr(optimizer, 50, 250, 500, epoch, args.lr, args.lr * size, 0.5)
     train(epoch)
-    if epoch % args.log_interval == 0:
-        test()
+    test()
     e_end = time.time()
     if rank==0:
         print("Epoch - %d time: %s seconds" %(epoch, e_end - e_start))
 time_tot = time.time() - time_tot
 print("Rank = {} Total training time = {} with num_epochs = {} and num_processes = {}".format(rank, time_tot, args.epochs, size))
 
-if rank == 0:
-    state = {
-            'model': model.module.state_dict(),
-            'optimizer': optimizer.state_dict()
-            }
-    torch.save(state, args.ckpt_dir + "/ckpt_phase{}.pt".format(args.phase))
-
 torch.distributed.destroy_process_group()
+
+#if rank == 0:
+#    torch.save(simple_xfer_model.state_dict(), args.model_dir + "/simple_xfer_model_phase{}.pt".format(args.phase))
+#    torch.save(lenet_trained_model.state_dict(), args.model_dir + "/lenet_model_phase{}.pt".format(args.phase))
+
+

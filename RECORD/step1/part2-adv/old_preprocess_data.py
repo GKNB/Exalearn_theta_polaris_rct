@@ -4,6 +4,7 @@ import h5py
 import time
 from collections import deque
 
+import os, psutil
 
 #'root_path' is the data directory
 #'path_in_list' is the directory name for each class
@@ -12,6 +13,8 @@ from collections import deque
 #'do_saving' decide if we want to save data
 #'filename_prefix' describe the filename, which should be filename_prefix-all-Y.npy and filename_prefix-all-P.npy
 def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list, do_saving=False, filename_prefix="Output"):
+
+    process = psutil.Process(os.getpid())
 
     start = time.time()
     t_stage = -time.time()
@@ -61,6 +64,7 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     
     t_stage += time.time()
     print("Read and merge hdf5 data takes {}".format(t_stage))
+    print(process.memory_info().rss / 1024 / 1024, " MB")
     t_stage = -time.time()
 
 
@@ -74,6 +78,7 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     t_stage += time.time()
     print("Merge two trigonal ranges takes {}".format(t_stage))
     t_stage = -time.time()
+    print(process.memory_info().rss / 1024 / 1024, " MB")
 
     
 #----------------------normalize X-data, concatenate and save to file------------------------
@@ -100,6 +105,7 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
             
 
     t_stage = -time.time()
+    print(process.memory_info().rss / 1024 / 1024, " MB")
     
 #------------------------create Y-data with size n*6 and save to file-----------------------
 # 0 for cubic,      [a, a, 1.5708, 0, 0, 1] 
@@ -159,5 +165,6 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     
     end = time.time()
     print("Total running time for merging = ", end - start)
+    print(process.memory_info().rss / 1024 / 1024, " MB")
 
     return X_final, y_final

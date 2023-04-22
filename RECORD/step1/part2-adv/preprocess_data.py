@@ -2,8 +2,6 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
 import numpy as np
 import h5py
 import time
-from collections import deque
-
 
 #'root_path' is the data directory
 #'path_in_list' is the directory name for each class
@@ -19,24 +17,20 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     X_all = []
 
     for si in range(4):
-        X = deque()
-        y = deque()
         sz = 0
         rank_max = rank_max_list[si]
         path_in = path_in_list[si]
         filename_in = filename_in_list[si]
-    
+ 
         for ri in range(rank_max):
             with h5py.File(root_path + path_in + filename_in + str(ri) + '.hdf5', 'r') as f:
-                dhisto = f['histograms']
-                X_sub = dhisto[:, 1, :]
-                X_shape = X_sub.shape
+                if ri == 0:
+                    dhisto = f['histograms']
+                    X_sub = dhisto[:, 1, :]
+                    X_shape = X_sub.shape
                 dparams = f['parameters']
                 y_sub = dparams[:]
                 y_shape = y_sub.shape
-    
-                X.append(X_sub)
-                y.append(y_sub)
                 sz += y_shape[0]
 
         X_shape = list(X_shape)
@@ -45,24 +39,27 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
         y_shape[0] = sz
         X_res = np.empty(tuple(X_shape))
         y_res = np.empty(tuple(y_shape))
-    
+  
         sz_tot = 0
         for ri in range(rank_max):
-            X_temp = X.popleft()
-            y_temp = y.popleft()
-            sz_temp = y_temp.shape[0]
-    
-            X_res[sz_tot:sz_tot+sz_temp] = X_temp
-            y_res[sz_tot:sz_tot+sz_temp] = y_temp
+            with h5py.File(root_path + path_in + filename_in + str(ri) + '.hdf5', 'r') as f:
+                dhisto = f['histograms']
+                X_sub = dhisto[:, 1, :]
+                dparams = f['parameters']
+                y_sub = dparams[:]
+                sz_temp = y_sub.shape[0]
+            X_res[sz_tot:sz_tot+sz_temp] = X_sub
+            y_res[sz_tot:sz_tot+sz_temp] = y_sub
             sz_tot += sz_temp
 
         X_all.append(X_res)
         y_all.append(y_res)
+        X_res = None
+        y_res = None
     
     t_stage += time.time()
     print("Read and merge hdf5 data takes {}".format(t_stage))
     t_stage = -time.time()
-
 
 #---------------------------merge two trigonal ranges together-----------------------------
     
@@ -74,7 +71,6 @@ def read_and_merge_data(root_path, path_in_list, filename_in_list, rank_max_list
     t_stage += time.time()
     print("Merge two trigonal ranges takes {}".format(t_stage))
     t_stage = -time.time()
-
     
 #----------------------normalize X-data, concatenate and save to file------------------------
     

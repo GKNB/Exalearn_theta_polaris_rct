@@ -6,37 +6,43 @@
 #PBS -A CSC249ADCD08
 #PBS -l filesystems=home:grand
 
-# MPI example w/ 4 MPI ranks per node spread evenly across cores
-NNODES=2
-NRANKS_PER_NODE=4
-NDEPTH=8
-NTHREADS=1
-
-NTOTRANKS=$(( NNODES * NRANKS_PER_NODE ))
-echo "NUM_OF_NODES= ${NNODES} TOTAL_NUM_RANKS= ${NTOTRANKS} RANKS_PER_NODE= ${NRANKS_PER_NODE} THREADS_PER_RANK= ${NTHREADS}"
-
 export NCCL_COLLNET_ENABLE=1
 export NCCL_NET_GDR_LEVEL=PHB
 export IBV_FORK_SAFE=1
 
+export HDF5_USE_FILE_LOCKING=FALSE
+export LD_LIBRARY_PATH=/home/twang3/g2full_polaris/GSASII/bindist:$LD_LIBRARY_PATH
+
 echo $PWD
 
-CMD="python /grand/CSC249ADCD08/twang/real_work_polaris_gpu/mtnetwork-training-ddp.py \
-	--device=gpu \
-	--epoch=250 \
-	--phase=0 \
-	--log-interval=10 \
-	--lr=0.0001 \
-	--num_workers=1 \
-	--data_root_dir='./' \
-	--model_dir='./' \
-	--rank_data_gen=56 \
-	--rank_in_max=28 \
-	"
+exp_root_dir="/grand/CSC249ADCD08/twang/real_work_polaris_gpu/experiment/small_example_v1/"
+exp_idx=1
+config_root_dir="${exp_root_dir}/Ex${exp_idx}/configs/"
+phase_idx=0
 
+CMD="python /grand/CSC249ADCD08/twang/real_work_polaris_gpu/mpi_sweep_hdf5_multi_sym_polaris.py \
+	${config_root_dir}/configs_phase${phase_idx}/config_1001460_cubic.txt \
+	${config_root_dir}/configs_phase${phase_idx}/config_1522004_trigonal_part1.txt \
+	${config_root_dir}/configs_phase${phase_idx}/config_1522004_trigonal_part2.txt \
+	${config_root_dir}/configs_phase${phase_idx}/config_1531431_tetragonal.txt \
+	"
 echo $CMD
 
-mpiexec -n ${NTOTRANKS} --ppn ${NRANKS_PER_NODE} --depth=${NDEPTH} --cpu-bind depth ./set_affinity_gpu_polaris.sh $CMD
+NNODES=2
+NRANKS_PER_NODE=24
+NTOTRANKS=$(( NNODES * NRANKS_PER_NODE ))
+echo "NUM_OF_NODES= ${NNODES} TOTAL_NUM_RANKS= ${NTOTRANKS} RANKS_PER_NODE= ${NRANKS_PER_NODE}"
+
+mpiexec -n ${NTOTRANKS} --ppn ${NRANKS_PER_NODE} --cpu-bind list:2:3:4:5:6:7:10:11:12:13:14:15:18:19:20:21:22:23:26:27:28:29:30:31 $CMD > ${exp_root_dir}/log_sim
+
+
+
+
+
+
+
+
+
 
 #mpiexec -n ${NTOTRANKS} --ppn ${NRANKS_PER_NODE} --depth=${NDEPTH} --cpu-bind depth python main.py --device gpu --epoch 600 --log-interval 10 --lr 0.0001 --num_workers 1
 

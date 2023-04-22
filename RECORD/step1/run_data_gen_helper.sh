@@ -7,12 +7,12 @@ num_phase=$3
 python ./data_gen_helper.py \
 	${exp_dir_name}/Ex${exp_idx}/configs/ \
 	2.5 5.5 0.0001 \
-	2.5 5.5 0.002 \
-	20 88 0.2 \
-	2.5 5.5 0.002 \
-	92 120 0.2 \
-	3.5 4.5 0.0005 \
+	2.5 5.5 0.005 \
+	20 88 0.5 \
+	2.5 5.5 0.005 \
+	92 120 0.5 \
 	3.5 4.5 0.001 \
+	3.5 4.5 0.005 \
 	$num_phase \
 	/grand/CSC249ADCD08/twang/cif_file_in/ \
 	${exp_dir_name}/Ex${exp_idx}/data

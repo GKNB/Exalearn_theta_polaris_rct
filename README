@@ -1,0 +1,10 @@
+Need to run start_run.sh to kind of "init" ML program, otherwise it can not start correctly, don't understand why this happens
+
+
+Temporarily exp are designed as follows: resource = CPU
+Ex1: One sim with all resource, then one ml with all resource
+Ex2: One sim with some resource, then one ml with some other resource
+Ex3: One sim with some resource, together with one ml with some other resource
+
+
+When comparing different exp, make sure data reading is not affecting much!

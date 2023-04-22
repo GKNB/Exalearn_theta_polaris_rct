@@ -2,8 +2,8 @@
 
 ########################### Parameters we need to modify #########################
 
-exp_dir_name=/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step3_np_3_large/result/
-num_phase=3
+exp_dir_name=/grand/CSC249ADCD08/twang/real_work_polaris_gpu/sc23_step1_all/result/
+num_phase=4
 
 ##################################################################################
 
